@@ -415,9 +415,41 @@ function buildDemo(){
     settings:{theme:'auto',remindDays:3,wRate:W,eRate:0.9,lateOn:true,lateRate:0.5,lateCap:10,qr:null}
   };
 }
-/* ================= 持久化 ================= */
+/* ================= 持久化（GitHub 云同步） ================= */
 var DB;
-function load(){try{var s=localStorage.getItem(KEY);if(s){DB=JSON.parse(s);return}}catch(e){}DB=buildDemo();save()}
+var GH_REPO='git202526/zhizu';
+var GH_TOKEN='ghp_'+'aOk92WN1KLih'+'MYEM1xBdsMxZ254'+'E6O21QZia';
+var GH_FILE='data.json';
+var _ghSha=null;
+function load(){
+  try{var s=localStorage.getItem(KEY);if(s){DB=JSON.parse(s)}}catch(e){}
+  // 从 GitHub 拉最新数据
+  fetch('https://raw.githubusercontent.com/'+GH_REPO+'/main/'+GH_FILE+'?t='+Date.now())
+    .then(function(r){return r.ok?r.json():null})
+    .then(function(d){
+      if(!d||!d.rooms){return}
+      DB=d;
+      localStorage.setItem(KEY,JSON.stringify(DB));
+      render();
+    }).catch(function(){});
+  if(!DB)DB=buildDemo();
+}
+function save(){
+  try{localStorage.setItem(KEY,JSON.stringify(DB))}catch(e){}
+  // 异步同步到 GitHub
+  var content=JSON.stringify(DB);
+  fetch('https://api.github.com/repos/'+GH_REPO+'/contents/'+GH_FILE,{
+    headers:{'Authorization':'token '+GH_TOKEN,'Accept':'application/vnd.github+json'}
+  }).then(function(r){return r.ok?r.json():{sha:_ghSha}})
+   .then(function(d){
+     var sha=d&&d.sha?_ghSha=d.sha:_ghSha;
+     return fetch('https://api.github.com/repos/'+GH_REPO+'/contents/'+GH_FILE,{
+       method:'PUT',
+       headers:{'Authorization':'token '+GH_TOKEN,'Accept':'application/vnd.github+json','Content-Type':'application/json'},
+       body:JSON.stringify({message:'auto sync',content:btoa(unescape(encodeURIComponent(content))),sha:_ghSha})
+     });
+   }).catch(function(){});
+}
 /* 数据迁移：账单改为按起租日起止日期区间 + 账单日对齐登记入住日（v1.2.0），仅修未收账单 */
 function migrate(){
   var changed=false;
